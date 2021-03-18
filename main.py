@@ -365,7 +365,7 @@ if __name__ == "__main__":
     while True:
         clearscrn()
         print("---------------------------* Kral4's Discord Selfbot *---------------------------")
-        print("Logging in ..."
+        print("Logging in ...")
         if login() == 1:
             break
         elif imhuman == 1:

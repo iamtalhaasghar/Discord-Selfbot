@@ -6,6 +6,12 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.action_chains import ActionChains
 
+from selenium.webdriver.chrome.service import Service as ChromiumService
+from webdriver_manager.chrome import ChromeDriverManager
+from webdriver_manager.core.utils import ChromeType
+
+from dotenv import load_dotenv
+
 import time
 import sys
 import os
@@ -13,10 +19,11 @@ import platform
 import multiprocessing
 import atexit
 
+load_dotenv()
 # Variables
-login_email = "email@email.com"
-login_pass = "password"
-login_username = "username"
+login_email = os.getenv('EMAIL')
+login_pass = os.getenv('PASS')
+login_username = os.getenv("USERNAME")
 chromepath = "chromedriver.exe"
 
 process_list = []
@@ -26,10 +33,11 @@ selected_channel = ""
 
 
 chrome_options = Options()
-chrome_options.add_argument("--headless")
+#chrome_options.add_argument("--headless")
 chrome_options.add_experimental_option("excludeSwitches", ["enable-logging"])
-driver = webdriver.Chrome(executable_path=chromepath, options=chrome_options)
-driver.maximize_window()
+driver = webdriver.Chrome(service=ChromiumService(ChromeDriverManager(chrome_type=ChromeType.CHROMIUM).install()), options=chrome_options)
+#driver = webdriver.Chrome(executable_path=chromepath, options=chrome_options)
+#driver.maximize_window()
 
 
 helpmenu = """
@@ -57,6 +65,7 @@ onlinefriends                                   | List all online friends
 waitingfriends                                  | List all waiting friend requests
 blockedfriends                                  | List all blocked friends
 addfriend USERNAME#1234                         | add user as your friend
+massfriend /path/to/file                        | add multiple people as your friend
 checkformessages                                | Check for new messages from friends
 sendusermessage USERNAME#1234                   | Send message to user
 
@@ -135,22 +144,25 @@ def login():
     good2go = 0
     driver.get("https://discord.com/login")
     try:
-        driver.find_element_by_name("email")
+        time.sleep(3)
+        driver.find_element(By.NAME, "email")
         good2go = 1
-    except:
-        print("[!] Couldn't locate \"email\" input")
-        pass
+    except Exception as e:
+        print("[!] Couldn't locate \"email\" input.", e)
     if good2go == 1:
-        driver.find_element_by_name("email").send_keys(login_email)
-        driver.find_element_by_name("password").send_keys(login_pass)
-        driver.find_element_by_class_name("button-3k0cO7").click()
+        driver.find_element(By.NAME,"email").send_keys(login_email)
+        time.sleep(3)
+        driver.find_element(By.NAME, "password").send_keys(login_pass)
+        time.sleep(3)
+        driver.find_element(By.XPATH, "//button[@type='submit']").click()
         time.sleep(2)
-        if "Login or password is invalid." in driver.find_element_by_tag_name("body").text:
+        if "Login or password is invalid." in driver.find_element(By.TAG_NAME,"body").text:
             print("Login or password is invalid.")
             return 0
         else:
-            WebDriverWait(driver, 15).until(EC.visibility_of_element_located((By.CSS_SELECTOR, "div.container-3baos1")))
-            source = driver.find_element_by_tag_name("body").text
+            WebDriverWait(driver, 60).until(EC.visibility_of_element_located((By.CSS_SELECTOR, "[aria-label='Servers']")))
+            source = driver.find_element(By.TAG_NAME, "body").text
+            
             if login_username in source:
                 print("[i] Login Successfull")
                 return 1
@@ -191,17 +203,18 @@ def joinserver(joincode):
 
 # USER FUNCTIONS
 def addfriend(friendname):
-    friendname = friendname[1:]
+    print(f'[i] sending friend request to {friendname}')
     returntohome(False)
-    time.sleep(5)
-    WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.CSS_SELECTOR, "[aria-controls='ADD_FRIEND-tab']"))).click()
-    driver.find_element_by_css_selector("input.addFriendInput-4bcerK").send_keys(friendname + Keys.ENTER)
-    time.sleep(1)
+    time.sleep(3)
+    WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.CSS_SELECTOR, "[aria-label='Add Friend']"))).click()
+    driver.find_element(By.NAME, "add-friend").send_keys(friendname + Keys.ENTER)
+    input('[i] Fill the captcha and press Enter')
     try:
-        print("[!]", driver.find_element_by_css_selector("div.colorStandard-2KCXvj.size16-1P40sf.body-Mj9Oxz").text)
-    except:
-        print("[i] Friend request sent !")
-        pass
+        if driver.find_element(By.TAG_NAME, "strong").text.strip() == friendname:
+            print(f"[i] Friend request sent to {friendname}")
+            time.sleep(3)
+    except Exception as e:
+        print('[!] Friend request sent failed. May be because you are already friends with each other.')
     
 def allfriends():
     returntohome(False)
@@ -307,93 +320,106 @@ def readchannelmessage():
 
 def main():
     while True:
-        whattodo = input("==>")
-        if " " in whattodo:
-            whattodo = whattodo.split(" ")
-            if whattodo[0] == "join":
-                joinserver(whattodo[1])
-            elif whattodo[0] == "addfriend":
-                friendname = ""
-                for index in whattodo[1:]:
-                    friendname = friendname + " " + index
-                addfriend(friendname)
-            elif whattodo[0] == "server":
-                switchtoserver(whattodo[1])
-                print("Server set to :", whattodo[1])
-            elif whattodo[0] == "channel":
-                switchtochannel(whattodo[1])
-                print("Channel set to :", whattodo[1])
-            elif whattodo[0] == "sendchannelmessage":
-                message = ""
-                for index in whattodo[1:]:
-                    message = message + " " + index
-                sendchannelmessage(message)
-            elif whattodo[0] == "sendchannelmessageloop":
-                message = ""
-                for index in whattodo[3:]:
-                    message = message + " " + index
-                sendchannelmessageloop(whattodo[1], whattodo[2], message)
-            elif whattodo[0] == "sendusermessage":
-                username = ""
-                for index in whattodo[1:]:
-                    username = username + " " + index
-                sendusermessage(username)
-        else:
-            if whattodo == "screenshot":
-                driver.save_screenshot("ScreenShot.png")
-            elif whattodo == "exit":
-                killdriver()
-                break
-            elif whattodo == "help":
-                print(helpmenu)
-            elif whattodo == "allfriends":
-                allfriends()
-            elif whattodo == "onlinefriends":
-                onlinefriends()
-            elif whattodo == "waitingfriends":
-                waitingfriends()
-            elif whattodo == "checkformessages":
-                checkformsg()
-            elif whattodo == "readchannelmessage":
-                readchannelmessage()
-
+        try:
+            whattodo = input("==>")
+            if " " in whattodo:
+                whattodo = whattodo.split(" ")
+                if whattodo[0] == "join":
+                    joinserver(whattodo[1])
+                elif whattodo[0] == "addfriend":
+                    friendname = ""
+                    for index in whattodo[1:]:
+                        friendname = friendname + " " + index
+                    addfriend(friendname)
+                elif whattodo[0] == "massfriend":
+                    filename = whattodo[1]
+                    with open(filename) as f:
+                        friends = f.readlines()
+                    t = len(friends)
+                    for i,f in enumerate(friends):
+                        print('[i] mass friends left', t-i)
+                        addfriend(f.strip())
+                elif whattodo[0] == "server":
+                    switchtoserver(whattodo[1])
+                    print("Server set to :", whattodo[1])
+                elif whattodo[0] == "channel":
+                    switchtochannel(whattodo[1])
+                    print("Channel set to :", whattodo[1])
+                elif whattodo[0] == "sendchannelmessage":
+                    message = ""
+                    for index in whattodo[1:]:
+                        message = message + " " + index
+                    sendchannelmessage(message)
+                elif whattodo[0] == "sendchannelmessageloop":
+                    message = ""
+                    for index in whattodo[3:]:
+                        message = message + " " + index
+                    sendchannelmessageloop(whattodo[1], whattodo[2], message)
+                elif whattodo[0] == "sendusermessage":
+                    username = ""
+                    for index in whattodo[1:]:
+                        username = username + " " + index
+                    sendusermessage(username)
+            else:
+                if whattodo == "screenshot":
+                    driver.save_screenshot("ScreenShot.png")
+                elif whattodo == "exit":
+                    killdriver()
+                    break
+                elif whattodo == "help":
+                    print(helpmenu)
+                elif whattodo == "allfriends":
+                    allfriends()
+                elif whattodo == "onlinefriends":
+                    onlinefriends()
+                elif whattodo == "waitingfriends":
+                    waitingfriends()
+                elif whattodo == "checkformessages":
+                    checkformsg()
+                elif whattodo == "readchannelmessage":
+                    readchannelmessage()
+        except Exception as e:
+            print(e)
 
 
 
 if __name__ == "__main__":
     atexit.register(killdriver)
     while True:
-        clearscrn()
-        print("---------------------------* Kral4's Discord Selfbot *---------------------------")
-        print("Logging in ...")
-        if login() == 1:
-            break
-        elif imhuman == 1:
-            break
-        else:
-            retry = 0
-            print("an problem occured while trying to login discord, migth be \"are you human test\"")
-            retry = input("Retry (Y/n)")
-            if retry == "":
-                retry = 1
-            elif retry == "Y" or retry == "y":
-                retry = 1
-            elif retry == "N" or retry == "n":
+        try:
+            #clearscrn()
+            print("---------------------------* Kral4's Discord Selfbot *---------------------------")
+            print("Logging in ...")
+            if login() == 1:
+                break
+            elif imhuman == 1:
+                break
+            else:
                 retry = 0
-            if retry != 1:
-                choice = 0
-                choice = input("Do you want to proceed with \"let me do human test\" function (Y/n)")
-                if choice == "":
-                    choice = 1
-                elif choice == "Y" or choice == "y":
-                    choice = 1
-                elif choice == "N" or choice == "n":
+                print("an problem occured while trying to login discord, migth be \"are you human test\"")
+                retry = input("Retry (Y/n)")
+                if retry == "":
+                    retry = 1
+                elif retry == "Y" or retry == "y":
+                    retry = 1
+                elif retry == "N" or retry == "n":
+                    retry = 0
+                if retry != 1:
                     choice = 0
-                if choice == 1:
-                    killdriver()
-                    loginimhuman()
-                    break
-                else:
-                    sys.exit(0)
+                    choice = input("Do you want to proceed with \"let me do human test\" function (Y/n)")
+                    if choice == "":
+                        choice = 1
+                    elif choice == "Y" or choice == "y":
+                        choice = 1
+                    elif choice == "N" or choice == "n":
+                        choice = 0
+                    if choice == 1:
+                        killdriver()
+                        loginimhuman()
+                        break
+                    else:
+                        sys.exit(0)
+        except Exception as e:
+            print(e)
     print("Type \"help\" for command list")     
     main()
